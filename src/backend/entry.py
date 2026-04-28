@@ -3,7 +3,7 @@ from fastapi import FastAPI
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
-from src.service.database.redis.engine import RedisManager
+from src.services.database.redis.engine import RedisManager
 from src.backend.routes import routers
 
 root_path = Path(os.getenv("PYTHONPATH"))

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Body, Request, HTTPException
-from src.service.auth import authorize
+from src.services.auth import authorize
 from src.backend.schemas.base.auth import UserLogin, UserRegister
 from src.backend.schemas.response.auth import UserRegisterResponse
-from src.service.database.redis.service import RedisService
+from src.services.database.redis.service import RedisService
 
 router = APIRouter(prefix="/auth", tags=["Authorize"])
 

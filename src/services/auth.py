@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from datetime import datetime, timedelta, timezone
-from src.service.methods import get_hash_password, verify_password, generate_uuid
+from src.services.methods import get_hash_password, verify_password, generate_uuid
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level="DEBUG")

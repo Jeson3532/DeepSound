@@ -5,7 +5,7 @@ from fastapi import HTTPException
 import os
 import logging
 from typing import Union
-from src.service.database.redis.engine import RedisManager
+from src.services.database.redis.engine import RedisManager
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level='DEBUG')
