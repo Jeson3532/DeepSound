@@ -1,10 +1,12 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 from src.services.database.redis.engine import RedisManager
 from src.backend.routes import routers
+from src.exceptions import setup_exceptions
 
 root_path = Path(os.getenv("PYTHONPATH"))
 app_path = root_path / 'src' / 'backend' / 'entry'
@@ -29,6 +31,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="API DeepSound", version='1.0.0', lifespan=lifespan)
+setup_exceptions(app)  # handling exc
 
 if __name__ == '__main__':
     uvicorn.run(f"{relative_path}:app", host='localhost', port=5000, reload=True)
