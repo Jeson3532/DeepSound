@@ -9,7 +9,7 @@ env_path = str(Path(root_path) / '.env')
 class DBConfig(BaseSettings):
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
-    POSTGRES_HOST: str
+    POSTGRES_HOST: str = 'deepsound-postgres'
     POSTGRES_PORT: str
     POSTGRES_DB: str
     POOL_SIZE: int = 16
