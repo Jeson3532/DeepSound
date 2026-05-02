@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from src.services.database.redis.engine import RedisManager
 from src.backend.routes import routers
 from src.exceptions import setup_exceptions
+from src.services.audio.service import AudioService
 
 root_path = Path(os.getenv("PYTHONPATH"))
 app_path = root_path / 'src' / 'backend' / 'entry'
@@ -23,6 +24,8 @@ async def lifespan(app: FastAPI):
     redis_manager = RedisManager()
     await redis_manager.initialize()
     app.state.redis = redis_manager.client
+    # ML
+    app.state.audio_service = AudioService()
 
     yield
 

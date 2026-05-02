@@ -1,3 +1,7 @@
 .venv/
 __pycache__
 .git
+.wav
+.mp3
+.mp4
+.m4a

@@ -5,3 +5,7 @@ __pycache__
 .log
 postgres_data
 models
+.wav
+.mp3
+.mp4
+.m4a

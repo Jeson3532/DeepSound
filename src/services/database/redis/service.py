@@ -26,3 +26,11 @@ class RedisService:
         except RedisError as e:
             logger.error(f"Ошибка при создании сессии Redis: {e}")
             return False
+
+    async def get_session(self, session_id: str) -> str | None:
+        try:
+            response = await self._client.get(f"session:{session_id}")
+            return response
+        except RedisError as e:
+            logger.error(f"Ошибка при получении сессии Redis: {e}")
+            return None
