@@ -30,7 +30,7 @@ class RedisService:
     async def get_session(self, session_id: str) -> str | None:
         try:
             response = await self._client.get(f"session:{session_id}")
-            return response
+            return response.decode("utf-8") if isinstance(response, bytes) else response
         except RedisError as e:
             logger.error(f"Ошибка при получении сессии Redis: {e}")
             return None
