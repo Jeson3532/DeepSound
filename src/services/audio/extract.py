@@ -1,27 +1,72 @@
 import librosa
 import pyprojroot as ppr
-import numpy as np
 from PIL import Image
 import io
 from librosa.util.exceptions import LibrosaError
 import logging
 import os
-
+import torch
+import torch.nn.functional as F
+import torchcrepe
+from pydub import AudioSegment
+import numpy as np
+import math
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level='DEBUG')
 
-TARGET_SR = 44100
+TARGET_SR = 16000
 MIN_DUR = 0.15
 MAX_DUR = 5.0
 RMS_THRESHOLD = 0.01
 
+label_map = {
+    -1: "unknown",
+    0: "normal",
+    1: "down",
+    2: "up"
+}
+
 
 def load_audio(audio: bytes | str):
+    # m4a и другие форматы не поддерживаемые soundfile — грузим через pydub
+    if isinstance(audio, str) and audio.lower().endswith(".m4a"):
+        return _load_via_pydub(audio)
+
     if isinstance(audio, bytes):
+        # Пытаемся определить формат по заголовку
+        if _is_m4a_bytes(audio):
+            return _load_via_pydub(audio)
         return librosa.load(io.BytesIO(audio), sr=TARGET_SR)
+
+    return librosa.load(audio, sr=TARGET_SR)
+
+
+def _load_via_pydub(audio: bytes | str) -> tuple:
+    if isinstance(audio, bytes):
+        segment = AudioSegment.from_file(io.BytesIO(audio), format="m4a")
     else:
-        return librosa.load(audio, sr=TARGET_SR)
+        segment = AudioSegment.from_file(audio, format="m4a")
+
+    # Конвертируем в mono float32 numpy array
+    samples = np.array(segment.get_array_of_samples(), dtype=np.float32)
+
+    if segment.channels == 2:
+        samples = samples.reshape(-1, 2).mean(axis=1)
+
+    # Нормализуем в диапазон [-1, 1]
+    samples /= np.iinfo(segment.array_type).max
+
+    # Ресемплируем если нужно
+    if segment.frame_rate != TARGET_SR:
+        samples = librosa.resample(samples, orig_sr=segment.frame_rate, target_sr=TARGET_SR)
+
+    return samples, TARGET_SR
+
+
+def _is_m4a_bytes(data: bytes) -> bool:
+    # M4A/MP4 содержит 'ftyp' box на байтах 4–8
+    return len(data) > 8 and data[4:8] == b"ftyp"
 
 
 def segment_audio(y, sr):
@@ -169,4 +214,82 @@ def aggregate_predictions(predictions, y, sr, th=0.2):
         'defect_notes': len(defects),
         'notes': predictions,
         'metrics': get_audio_metrics(y, sr)
+    }
+
+
+def get_cents_deviation(segments: list[dict]) -> list[dict | None]:
+    if not segments:
+        return []
+
+    sr = segments[0]["sr"]
+
+    # Явное приведение каждого сегмента к float32 numpy → tensor
+    ys = [
+        torch.from_numpy(np.ascontiguousarray(seg["y"], dtype=np.float32))
+        for seg in segments
+    ]
+
+    lengths = [y.shape[0] for y in ys]
+    max_len = max(lengths)
+
+    # Паддинг каждого тензора до max_len
+    padded_list = [
+        F.pad(y, (0, max_len - y.shape[0]))
+        for y in ys
+    ]
+
+    # Проверка что все одинаковой длины перед stack
+    assert all(t.shape[0] == max_len for t in padded_list), \
+        f"Паддинг не сработал: {[t.shape for t in padded_list]}"
+
+    padded = torch.stack(padded_list)  # (B, T)
+
+    frequency, periodicity = torchcrepe.predict(
+        padded,
+        sr,
+        hop_length=256,
+        fmin=50,
+        fmax=2000,
+        model='full',
+        return_periodicity=True,
+        batch_size=len(segments),
+    )
+
+    hop = 256
+    valid_frames = [math.ceil(l / hop) for l in lengths]
+
+    results = []
+    for i, n_frames in enumerate(valid_frames):
+        freq_i = frequency[i, :n_frames]
+        period_i = periodicity[i, :n_frames]
+
+        voiced = period_i > 0.5
+        freq_voiced = freq_i[voiced]
+
+        if freq_voiced.numel() == 0:
+            results.append(None)
+            continue
+
+        f0 = freq_voiced.median().item()
+        midi = 69 + 12 * np.log2(f0 / 440.0)
+        f_ref = 440.0 * 2 ** ((round(midi) - 69) / 12)
+        cents = 1200 * np.log2(f0 / f_ref)
+
+        results.append({"cents": cents, "periodicity": period_i[voiced].mean().item()})
+
+    return results
+
+
+def classify_tuning(cents, threshold=20) -> (str, int):
+    if cents is None:
+        label = -1
+    elif abs(cents) < threshold:
+        label = 0
+    elif cents < -threshold:
+        label = 1  # Недотянуто
+    else:
+        label = 2  # Перетянуто
+    return {
+        "label": label,
+        "label_name": label_map.get(label)
     }

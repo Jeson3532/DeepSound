@@ -8,6 +8,7 @@ from src.services.database.redis.engine import RedisManager
 from src.backend.routes import routers
 from src.exceptions import setup_exceptions
 from src.services.audio.service import AudioService
+import torchcrepe
 
 root_path = Path(os.getenv("PYTHONPATH"))
 app_path = root_path / 'src' / 'backend' / 'entry'
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     app.state.redis = redis_manager.client
     # ML
     app.state.audio_service = AudioService()
+    torchcrepe.load.model('cuda', 'full')
 
     yield
 

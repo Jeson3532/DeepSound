@@ -3,9 +3,21 @@ __pycache__
 .env
 .idea
 .log
-postgres_data
-models
-.wav
-.mp3
-.mp4
-.m4a
+postgres_data/
+models/
+
+# mime-types
+*.m4a
+*.mp3
+*.mp4
+*.wav
+*.aac
+*.webm
+*.mka
+*.mkv
+*.ogg
+*.opus
+
+*.txt
+*.exe
+*.shp

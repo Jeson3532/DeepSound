@@ -2,10 +2,13 @@ from transformers import ConvNextImageProcessor, ConvNextForImageClassification
 import torch
 import pyprojroot as ppr
 from peft import PeftModel
-from src.services.audio.extract import get_mel_spec, load_audio, get_audio_metrics, aggregate_predictions, segment_audio, get_cqt
+from src.services.audio.extract import get_mel_spec, load_audio, get_audio_metrics, aggregate_predictions, \
+    segment_audio, get_cents_deviation, classify_tuning
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from src.exceptions import NoAudioSegments
+import librosa
+import io
 
 models_path = ppr.here() / 'models'
 model_name = 'facebook/convnext-base-224-22k-1k'
@@ -40,47 +43,53 @@ class AudioService:
                  model_path: str = checkpoint_path,
                  base_model_name: str = model_name
                  ):
-        self.model = load_convnext_model(base_model_name, model_path)
-        self.processor = load_convnext_processor(base_model_name)
+        # self.model = load_convnext_model(base_model_name, model_path)
+        # self.processor = load_convnext_processor(base_model_name)
         self.executor = ThreadPoolExecutor(max_workers=2)
 
-        self.model.to(DEVICE)
-        self.model.eval()
+        #self.model.to(DEVICE)
+        #self.model.eval()
 
     def process_analyze(self, audio: bytes | str):
         y, sr = load_audio(audio)
 
-        # Детектируем ноты
         segments = segment_audio(y, sr)
-
         if not segments:
             raise NoAudioSegments("Ноты не обнаружены в аудио")
 
-        # Предсказываем для каждого сегмента
+        # Батчевый проход — один вызов torchcrepe на все сегменты
+        batch_results = get_cents_deviation(segments)
+
         predictions = []
-        for seg in segments:
-            inputs = get_cqt(seg['y'], seg['sr'], processor=self.processor)
-            inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+        for seg, result in zip(segments, batch_results):
+            if result is None:
+                continue
 
-            with torch.no_grad():
-                logits = self.model(**inputs).logits
-                probs = torch.softmax(logits, dim=-1)[0]
-
-            label = int(torch.argmax(probs).item())
-            conf = float(probs[label].item())
+            response = classify_tuning(result["cents"])
+            label = response.get("label")
 
             predictions.append({
-                'start': seg['start'],
-                'duration': seg['duration'],
-                'label': label,
-                'confidence': conf,
-                'defect': label == 1
+                "start": seg["start"],
+                "duration": seg["duration"],
+                "label": label,
+                "confidence": result["periodicity"],
+                "defect": label in [1, 2],
             })
 
-        # Агрегация
         return aggregate_predictions(predictions, y, sr)
-
 
     async def analyze(self, audio: bytes | str):
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(self.executor, self.process_analyze, audio)
+
+
+# import pyprojroot as ppr
+# from pathlib import Path
+#
+# root_path = ppr.here()
+# file_path = Path(root_path) / 'test_files' / '13.m4a'
+# a = AudioService()
+# with open(file_path, 'rb') as f:
+#     file_b = f.read()
+# result = a.process_analyze(file_b)
+# print(result)
